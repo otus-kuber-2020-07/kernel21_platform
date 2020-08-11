@@ -1,0 +1,13 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  creationTimestamp: null
+  labels:
+    run: frontend
+  name: frontend
+spec:
+  containers:
+  - image: kernel21/microservices-demo
+    name: frontend
+  dnsPolicy: ClusterFirst
+  restartPolicy: Never
