@@ -23,3 +23,18 @@ kind create cluster --config kind-config.yaml
 - С использованием параметров maxSurge и maxUnavailable были реализованы сценарии развертывания blue-green и Reverse Rolling Update.
 - Был изучен и проверен механиз корректности работы pod с помощью readinessProbe и livenessProbe.
 - Был применен yaml c DaemonSet для node-exporter, при этом он был развернут всех нодах кластера. Было выяснено, что на развертывание на мастер-нодах влияет параметр tolerations.
+
+## Домашняя работа 3 (kubernetes-controllers)
+
+**При выполении работы сделано:**
+
+- Создан Service Account bob, ему дана ему роль admin в рамках всего кластера
+- Создать Service Account dave без доступа к кластеру.
+- Создан Namespace prometheus
+- Создан Service Account carol в namespace prometheus
+- Всем Service Account в Namespace prometheus дана возможность делать get, list, watch для pods всего кластера
+- Создан Namespace dev
+- Создан Service Account jane в Namespace dev
+- jane дана роль admin в рамках Namespace dev
+- Создан Service Account ken в Namespace dev
+- ken дана роль view в рамках Namespace dev
