@@ -38,3 +38,33 @@ kind create cluster --config kind-config.yaml
 - jane дана роль admin в рамках Namespace dev
 - Создан Service Account ken в Namespace dev
 - ken дана роль view в рамках Namespace dev
+
+## Домашняя работа 3 (kubernetes-networks)
+
+**При выполении работы сделано:**
+
+- Добавлены проверки Pod (ReadinessProbe, LivenessProbe)
+- Создан объект Deployment
+- Добавлен сервис в кластер (ClusterIP)
+- Включен режим балансировки IPVS
+- Установлен MetaILB в Layer2 режиме
+- Добавлен сервис LoadBalancer
+- Установлен ingress-контроллер и прокси ingress-nginx
+- Созданы правила Ingress
+
+#### Вопрос:
+***Почему следующая конфигурация валидна, но не имеет смысла? Бывают ли ситуации, когда она все-таки имеет смысл?***
+```
+                    livenessProbe:
+                        exec:
+                            command:
+                                - 'sh'
+                                - '-c'
+                                - 'ps aux | grep my_web_server_process'
+```
+#### Ответ:
+В выводе grep будет присутсвовать сама команда grep, ее можно убрать через добавление '| grep -v grep'
+Но даже при этом наличие процесса не говорит о его корректной работе. Смысл имеет, если данный процесс сам будет являться результатом предварительной работы при развертывании.
+
+
+
