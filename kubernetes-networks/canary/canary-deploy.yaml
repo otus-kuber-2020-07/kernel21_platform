@@ -1,0 +1,43 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web-v2
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: web-v2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 0
+      maxSurge: 100%
+  template:
+    metadata:
+      name: web-v2
+      labels: 
+        app: web-v2
+    spec:
+      initContainers:
+      - name: init-web
+        image: busybox
+        command: ['sh', '-c', 'echo "web-v2" >> /app/index.html']
+        volumeMounts:
+          - name: app
+            mountPath: /app
+      containers:
+      - name: web-v2
+        image: kernel21/kubernetes-intro
+        readinessProbe:
+          httpGet:
+            path: /index.html
+            port: 8000
+        livenessProbe:
+          tcpSocket: { port: 8000 }
+        volumeMounts:
+          - name: app
+            mountPath: /app
+      volumes:
+      - name: app
+        emptyDir: {}
+
