@@ -39,7 +39,7 @@ kind create cluster --config kind-config.yaml
 - Создан Service Account ken в Namespace dev
 - ken дана роль view в рамках Namespace dev
 
-## Домашняя работа 3 (kubernetes-networks)
+## Домашняя работа 4 (kubernetes-networks)
 
 **При выполении работы сделано:**
 
@@ -66,5 +66,9 @@ kind create cluster --config kind-config.yaml
 В выводе grep будет присутсвовать сама команда grep, ее можно убрать через добавление '| grep -v grep'
 Но даже при этом наличие процесса не говорит о его корректной работе. Смысл имеет, если данный процесс сам будет являться результатом предварительной работы при развертывании.
 
+## Домашняя работа 5 (kubernetes-volumes)
 
+**При выполении работы сделано:**
 
+- Развернут StatefulSet c minio в kind
+- Создан файл секретов minio-secret.yaml и изменен minio-statefulset.yaml для использования секретов из Secret
