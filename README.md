@@ -72,3 +72,16 @@ kind create cluster --config kind-config.yaml
 
 - Развернут StatefulSet c minio в kind
 - Создан файл секретов minio-secret.yaml и изменен minio-statefulset.yaml для использования секретов из Secret
+
+## Домашняя работа 6 (kubernetes-templating)
+
+**При выполении работы сделано:**
+
+- Установлен helm 3
+- Был установлен Cert-manager
+- Установлен Harbor
+- Рассмотрен процесс создания своего chart'a
+- Рассмотрен helm secret
+- Рассмотрен kubecfg
+- Рассмотрен kustomize
+
