@@ -115,3 +115,60 @@ mysql: [Warning] Using a password on the command line interface can be insecure.
 |  2 | some data-2 |
 +----+-------------+
 ```
+
+## Домашняя работа 8 (kubernetes-monitoring)
+
+- Создаем новый ns и разворачиваем prometheus-operator через helm3 с values для ingress:
+```
+kubectl create ns monitoring
+helm upgrade --install  prometheus-operator stable/prometheus-operator -n monitoring -f prometheus-operator.values.yaml
+```
+- Ждем старта всех pods
+```
+kubectl get pods -n monitoring
+NAME                                                      READY   STATUS    RESTARTS   AGE
+alertmanager-prometheus-operator-alertmanager-0           2/2     Running   0          45s
+prometheus-operator-grafana-7769fc4f77-lq28g              2/2     Running   0          72s
+prometheus-operator-kube-state-metrics-69fcc8d48c-9gvmd   1/1     Running   0          72s
+prometheus-operator-operator-5cf9888d76-szdxf             2/2     Running   0          72s
+prometheus-operator-prometheus-node-exporter-s2j65        1/1     Running   0          72s
+prometheus-prometheus-operator-prometheus-0               3/3     Running   1          35s
+
+```
+- Разворачиваем:
+1. ConfigMap с конфигурацией nginx.
+2. Deployment с nginx и sidecar nginx-exporter контейнерами:
+  * nginx с 80 портом с поддержкой nginx-статуса доступного на порту 8080 по адресу http://127.0.0.1:8080/basic_status
+  * nginx-exporter, отдающий метрики в формате prometheus на порту 9113
+  * три реплики
+3. Service для доступа к pods.
+4. CR ServiceMonitor для мониторинга сервисов.
+
+```
+kubectl apply -f nginx-configMap.yaml
+kubectl apply -f nginx-deployment.yaml
+kubectl apply -f nginx-nginx-service.yaml
+kubectl apply -f nginx-serviceMonitor.yaml
+```
+- Получаем пароль для grafana
+```
+kubectl get secret -n monitoring prometheus-operator-grafana -o yaml
+apiVersion: v1
+data:
+  admin-password: cHJvbS1vcGVyYXRvcg==
+  admin-user: YWRtaW4=
+  ldap-toml: ""
+----
+```
+```
+$echo "YWRtaW4=" | base64 -d
+admin
+$echo "cHJvbS1vcGVyYXRvcg==" | base64 -d
+prom-operator
+```
+
+- Заходим на http://prometheus.lan/targets
+![](img/kubernetes-monitoring-prom.png)
+- Заходим на http://grafana.lan, импортируем dashboard.json для nginx prometheus exporter
+![](img/kubernetes-monitoring-grafana.png)
+
