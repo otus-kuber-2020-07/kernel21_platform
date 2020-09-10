@@ -172,3 +172,11 @@ prom-operator
 - Заходим на http://grafana.lan, импортируем dashboard.json для nginx prometheus exporter
 ![](img/kubernetes-monitoring-grafana.png)
 
+## Домашняя работа 9 (kubernetes-logging)
+
+**При выполении работы сделано:**
+
+- Был установилен EFK
+- Провели наблюдение на отработку дашборды при отказе ноды с ElasticSearch
+- Была создана дашборда в Kibana
+- Была создана дашборда с Loki в garafana.
