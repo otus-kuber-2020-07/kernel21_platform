@@ -190,3 +190,283 @@ prom-operator
 - Провели канареечное развертывание с помощью Flagger
 
 Репозиторий: <https://gitlab.com/kernel218/microservices-demo>
+
+## Домашняя работа 11 (kubernetes-vault)
+
+**При выполении работы сделано:**
+
+- Был установлен Vault
+- Сгенерировали сертификаты
+- Настроили работу vault по HTTPS
+
+```console
+$ helm status vault
+WARNING: "kubernetes-charts.storage.googleapis.com" is deprecated for "stable" and will be deleted Nov. 13, 2020.
+WARNING: You should switch to "https://charts.helm.sh/stable"
+NAME: vault
+LAST DEPLOYED: Tue Nov 10 15:24:05 2020
+NAMESPACE: default
+STATUS: deployed
+REVISION: 1
+TEST SUITE: None
+NOTES:
+Thank you for installing HashiCorp Vault!
+
+Now that you have deployed Vault, you should look over the docs on using
+Vault with Kubernetes available here:
+
+https://www.vaultproject.io/docs/
+
+
+Your release is named vault. To learn more about the release, try:
+
+  $ helm status vault
+  $ helm get manifest vault
+```
+
+```console
+$ kubectl exec -it vault-0 -- vault operator init --key-shares=1 --key-threshold=1
+Unseal Key 1: 9JWOacoVgI9dwG12YIH9U7EeHVlE5nZTFAxt7w5qzNY=
+
+Initial Root Token: s.ACIsIsQFVc3fB28VQfYJ4pph
+```
+
+```console
+$ kubectl exec -it vault-0 -- vault status
+Key             Value
+---             -----
+Seal Type       shamir
+Initialized     true
+Sealed          false
+Total Shares    1
+Threshold       1
+Version         1.5.4
+Cluster Name    vault-cluster-40d72e93
+Cluster ID      728cc4ca-d52b-6628-96fe-020efcda1777
+HA Enabled      true
+HA Cluster      https://vault-0.vault-internal:8201
+HA Mode         active
+$ kubectl exec -it vault-1 -- vault status
+Key                    Value
+---                    -----
+Seal Type              shamir
+Initialized            true
+Sealed                 false
+Total Shares           1
+Threshold              1
+Version                1.5.4
+Cluster Name           vault-cluster-40d72e93
+Cluster ID             728cc4ca-d52b-6628-96fe-020efcda1777
+HA Enabled             true
+HA Cluster             https://vault-0.vault-internal:8201
+HA Mode                standby
+Active Node Address    http://10.44.2.6:8200
+$ kubectl exec -it vault-2 -- vault status
+Key                    Value
+---                    -----
+Seal Type              shamir
+Initialized            true
+Sealed                 false
+Total Shares           1
+Threshold              1
+Version                1.5.4
+Cluster Name           vault-cluster-40d72e93
+Cluster ID             728cc4ca-d52b-6628-96fe-020efcda1777
+HA Enabled             true
+HA Cluster             https://vault-0.vault-internal:8201
+HA Mode                standby
+Active Node Address    http://10.44.2.6:8200
+```
+
+```console
+$ kubectl exec -it vault-0 -- vault login
+Token (will be hidden): 
+Success! You are now authenticated. The token information displayed below
+is already stored in the token helper. You do NOT need to run "vault login"
+again. Future Vault requests will automatically use this token.
+
+Key                  Value
+---                  -----
+token                s.ACIsIsQFVc3fB28VQfYJ4pph
+token_accessor       F3rNMqLt2J08EWG8JyUMMd04
+token_duration       ∞
+token_renewable      false
+token_policies       ["root"]
+identity_policies    []
+policies             ["root"]
+$ kubectl exec -it vault-0 -- vault auth list
+Path      Type     Accessor               Description
+----      ----     --------               -----------
+token/    token    auth_token_ddbd8546    token based credentials
+```
+
+```console
+$ kubectl exec -it vault-0 -- vault read otus/otus-ro/config
+Key                 Value
+---                 -----
+refresh_interval    768h
+password            asajkjkahs
+username            otus
+$ kubectl exec -it vault-0 -- vault kv get otus/otus-rw/config
+====== Data ======
+Key         Value
+---         -----
+password    asajkjkahs
+username    otus
+```
+
+```console
+$ kubectl exec -it vault-0 -- vault auth list
+Path           Type          Accessor                    Description
+----           ----          --------                    -----------
+kubernetes/    kubernetes    auth_kubernetes_aff4ece0    n/a
+token/         token         auth_token_ddbd8546         token based credentials
+```
+
+#### Вопрос:
+***Вопрос: что делает эта конструкция sed ’s/\x1b[[0-9;]m//g’ ?***
+
+#### Ответ:
+убирает цвет в выводе консоли(убирает escape-последовательность)
+
+#### Вопрос:
+***Почему мы смогли записать otus-rw/config1 но не смогли otus-rw/config ?***
+
+#### Ответ:
+Потому что в политиках определены правила
+
+```
+path "otus/otus-ro/*" {
+  capabilities = ["read", "list"]
+}
+path "otus/otus-rw/*" {
+  capabilities = ["read", "create", "list"]
+}
+```
+*Поправим правила:*
+
+```
+path "otus/otus-ro/*" {
+  capabilities = ["read", "list"]
+}
+path "otus/otus-rw/*" {
+  capabilities = ["read", "create", "update", "list"]
+}
+```
+
+```console
+$ kubectl exec -ti vault-agent-example -c nginx-container  -- cat /usr/share/nginx/html/index.html
+<html>
+<body>
+<p>Some secrets:</p>
+<ul>
+<li><pre>username: otus</pre></li>
+<li><pre>password: asajkjkahs</pre></li>
+</ul>
+
+</body>
+</html>
+```
+
+``` console
+$ kubectl exec -it vault-0 -- vault write pki_int/roles/devlab-dot-ru allowed_domains="devlab.ru" allow_subdomains=true max_ttl="720h"
+Success! Data written to: pki_int/roles/devlab-dot-ru
+$ kubectl exec -it vault-0 -- vault write pki_int/issue/devlab-dot-ru common_name="gitlab.devlab.ru" ttl="24h" 
+Key                 Value
+---                 -----
+ca_chain            [-----BEGIN CERTIFICATE-----
+MIIDnDCCAoSgAwIBAgIUHVVm+JS5vk31bi8J+pIaiVjjZYQwDQYJKoZIhvcNAQEL
+BQAwFTETMBEGA1UEAxMKZXhhbXBsZS5ydTAeFw0yMDExMTAxMzQzNThaFw0yNTEx
+MDkxMzQ0MjhaMCwxKjAoBgNVBAMTIWV4YW1wbGUucnUgSW50ZXJtZWRpYXRlIEF1
+dGhvcml0eTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAJb/cl4oB1q9
+C3IxC0ITM2uxuVL9RWamyeF9NWkDMUixKATNVoXO5Fm3Nv0aJE+WzNz5sBpURFPs
+ocqoi3vlFiT++CvA1nxwG7c3MhfdyzymAIeoWxRNztzRCbCNcLcSAiEp99z9BqBg
+qK2tOWZTyTrEGxPrRNpmiHDUGnj+eGQSjIbCu4s8FacOIwgQrOlhFbTvhFyS/dPD
+OK79oU12xM/bmrYKRsTX069nLcX0VSjiq49ZIK1CPR+99qkYaQpPXNd0dSDUYApf
+GB107PS6ThVPSQu1KfgnPAJluu+EJa0cp37zZZKNCa2rbVhLMFKRORlLy0q3l58g
+L6lPPX9D0IMCAwEAAaOBzDCByTAOBgNVHQ8BAf8EBAMCAQYwDwYDVR0TAQH/BAUw
+AwEB/zAdBgNVHQ4EFgQUVP8BGgPlrbzRzlUadcMp2IgE7AIwHwYDVR0jBBgwFoAU
+AruKZQIV4dQV97zD8zOzjohmhKwwNwYIKwYBBQUHAQEEKzApMCcGCCsGAQUFBzAC
+hhtodHRwOi8vdmF1bHQ6ODIwMC92MS9wa2kvY2EwLQYDVR0fBCYwJDAioCCgHoYc
+aHR0cDovL3ZhdWx0OjgyMDAvdjEvcGtpL2NybDANBgkqhkiG9w0BAQsFAAOCAQEA
+JpAAcaGKm6N4ryv0bvbCtIf46DaSWhCbCLQzvmHZMfvn4fvP2jAjknRznKYlFte/
+pZvnqJyOnWi8pRRV5FAQ8nhr8MzFPwsxjtaD6x2A0qxA7S1cctUzO4xxCHWB/hGQ
+Dx5H+b70f6nPWtUI1CiUHVNTatwutTCaGpdre+lh+zGYVeZbt9Za4HAc19vTZlhX
+1Dzsbu3LZhLu+l55Wa3eFTb6cUnkp+i08AYdhN/+XyU8d+sKphmLB3AUzOH4R/bh
+3EUQNzF2cx8D8eXRWh9wvc+mjoOzdR5/ms5QIz0y9lVRApvP/YYs9lgN2hP0Tvch
+th6ktjdHuU076s3rV1kxvg==
+-----END CERTIFICATE-----]
+certificate         -----BEGIN CERTIFICATE-----
+MIIDZTCCAk2gAwIBAgIUOQOWN+dkPa4qn+napZy7R/BGTvgwDQYJKoZIhvcNAQEL
+BQAwLDEqMCgGA1UEAxMhZXhhbXBsZS5ydSBJbnRlcm1lZGlhdGUgQXV0aG9yaXR5
+MB4XDTIwMTExMDEzNTQwMVoXDTIwMTExMTEzNTQzMFowGzEZMBcGA1UEAxMQZ2l0
+bGFiLmRldmxhYi5ydTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAPET
+CQ/gjpJ1m64OOrv9qBP671IH3dvVU1kzaXqX/hi2QUA9jwx92AdRxqHw+G6NxSng
++3lusfW5R9p4yYPNzhF8RJ5EkWM3qiyDCH0ps6vLFbN71Qb748y8FjQQFRuvHUv/
+Y9QvYEjRsTTBJyDLGjxjSLnTJELX1Q3DoghvSHMm1ObBs6FGn5jrMzVm+XmkIRr5
+JDF1R3EJWbufUQfafivAEatZ2E8by6kvMgZN/Mudy1l96ijl8AlsBgSmzrSArhDW
+A1yW+KGhXOg/82JdFDEzHFAnpfbZ2ePbuMBy3j/NbsJ3vSvNJ1sYMM1rWJ3zHpPS
+MUApIC16fzAVZ2H/xbMCAwEAAaOBjzCBjDAOBgNVHQ8BAf8EBAMCA6gwHQYDVR0l
+BBYwFAYIKwYBBQUHAwEGCCsGAQUFBwMCMB0GA1UdDgQWBBQ8BWH1n3yc0l/JQny+
+JgC4Pt7U5zAfBgNVHSMEGDAWgBRU/wEaA+WtvNHOVRp1wynYiATsAjAbBgNVHREE
+FDASghBnaXRsYWIuZGV2bGFiLnJ1MA0GCSqGSIb3DQEBCwUAA4IBAQBgmgqpXSKO
+/RhzUEpIclcuYqyx/d1dzuLD4Qp/1nvH1QemBpvtM4qOwI7wc5V1RwGYIZNiOatS
+CkuWZ6ePsxVrLScbiBwbHmeHpS5KEzwnZXmdHhnp1scuv3cTdPHj0ZWgjs2qyTz6
+BDqgZYYO85Ioq1N2TA2c2T43KULDa4Gml46Bmxy7dKDeN29ISl7BAItDCChUTtsR
+DWIlw4cKJG3DCdwA7eqvN9prt5es4/JmlhjLLT6d6Hqe78hoek5VKhsu0xPa/CEo
+9EJL2d33j3uSyGXFMJiEF7bBx65AMg944x/ojyqkiCHp1I6rZtIG/0kwIVobUgMu
+li/XZCZ745WR
+-----END CERTIFICATE-----
+expiration          1605102870
+issuing_ca          -----BEGIN CERTIFICATE-----
+MIIDnDCCAoSgAwIBAgIUHVVm+JS5vk31bi8J+pIaiVjjZYQwDQYJKoZIhvcNAQEL
+BQAwFTETMBEGA1UEAxMKZXhhbXBsZS5ydTAeFw0yMDExMTAxMzQzNThaFw0yNTEx
+MDkxMzQ0MjhaMCwxKjAoBgNVBAMTIWV4YW1wbGUucnUgSW50ZXJtZWRpYXRlIEF1
+dGhvcml0eTCCASIwDQYJKoZIhvcNAQEBBQADggEPADCCAQoCggEBAJb/cl4oB1q9
+C3IxC0ITM2uxuVL9RWamyeF9NWkDMUixKATNVoXO5Fm3Nv0aJE+WzNz5sBpURFPs
+ocqoi3vlFiT++CvA1nxwG7c3MhfdyzymAIeoWxRNztzRCbCNcLcSAiEp99z9BqBg
+qK2tOWZTyTrEGxPrRNpmiHDUGnj+eGQSjIbCu4s8FacOIwgQrOlhFbTvhFyS/dPD
+OK79oU12xM/bmrYKRsTX069nLcX0VSjiq49ZIK1CPR+99qkYaQpPXNd0dSDUYApf
+GB107PS6ThVPSQu1KfgnPAJluu+EJa0cp37zZZKNCa2rbVhLMFKRORlLy0q3l58g
+L6lPPX9D0IMCAwEAAaOBzDCByTAOBgNVHQ8BAf8EBAMCAQYwDwYDVR0TAQH/BAUw
+AwEB/zAdBgNVHQ4EFgQUVP8BGgPlrbzRzlUadcMp2IgE7AIwHwYDVR0jBBgwFoAU
+AruKZQIV4dQV97zD8zOzjohmhKwwNwYIKwYBBQUHAQEEKzApMCcGCCsGAQUFBzAC
+hhtodHRwOi8vdmF1bHQ6ODIwMC92MS9wa2kvY2EwLQYDVR0fBCYwJDAioCCgHoYc
+aHR0cDovL3ZhdWx0OjgyMDAvdjEvcGtpL2NybDANBgkqhkiG9w0BAQsFAAOCAQEA
+JpAAcaGKm6N4ryv0bvbCtIf46DaSWhCbCLQzvmHZMfvn4fvP2jAjknRznKYlFte/
+pZvnqJyOnWi8pRRV5FAQ8nhr8MzFPwsxjtaD6x2A0qxA7S1cctUzO4xxCHWB/hGQ
+Dx5H+b70f6nPWtUI1CiUHVNTatwutTCaGpdre+lh+zGYVeZbt9Za4HAc19vTZlhX
+1Dzsbu3LZhLu+l55Wa3eFTb6cUnkp+i08AYdhN/+XyU8d+sKphmLB3AUzOH4R/bh
+3EUQNzF2cx8D8eXRWh9wvc+mjoOzdR5/ms5QIz0y9lVRApvP/YYs9lgN2hP0Tvch
+th6ktjdHuU076s3rV1kxvg==
+-----END CERTIFICATE-----
+private_key         -----BEGIN RSA PRIVATE KEY-----
+MIIEpQIBAAKCAQEA8RMJD+COknWbrg46u/2oE/rvUgfd29VTWTNpepf+GLZBQD2P
+DH3YB1HGofD4bo3FKeD7eW6x9blH2njJg83OEXxEnkSRYzeqLIMIfSmzq8sVs3vV
+BvvjzLwWNBAVG68dS/9j1C9gSNGxNMEnIMsaPGNIudMkQtfVDcOiCG9IcybU5sGz
+oUafmOszNWb5eaQhGvkkMXVHcQlZu59RB9p+K8ARq1nYTxvLqS8yBk38y53LWX3q
+KOXwCWwGBKbOtICuENYDXJb4oaFc6D/zYl0UMTMcUCel9tnZ49u4wHLeP81uwne9
+K80nWxgwzWtYnfMek9IxQCkgLXp/MBVnYf/FswIDAQABAoIBAQCLd+LHP7fb/ZRq
+dyr9tXs2y/cGsyxkUR9ePMMqPKKxc0d+vd5zcJ65ZVMQP1PKydQmLVXvY94q9d0f
+BMA4s6kjLoyYL70Y9IxMIiaYGrcqjVxpsRuGZdXdjXce+arskDvXytHbYOlIV6A4
+kAJuE3KDO0FI2GFjFnDY/LRSQudcThxlRfStXd6H6veY0Z9l/PrMrw50pPBq4qBE
+Tg0LEPwhj30N6/V8ZMnK0bCRwLiNAQqYLLqKJ4t2EID7L7HGwYUGTw2F7soELrhS
+a2g2BaxgC2J9UafDVteAqyYRQa3uZ6/zB1C2ijKxtLgwshAKOIBejYHHwFqRsaDw
+dZ34BO65AoGBAPS8GFxyNhT3nP2PYhZVvj3FKAwAIV56qY34WZ3yHa1sSBsCb8UB
+XwhRn/s7ZbAzo9nlOmr1O77ybejxRUmGs6e+E4j1u8dUlSTc33BTd979XGt/UXAz
+JbkyKZNQc17evKS5EDUC/gFWCxcOsnX12LjrYBgf9fJcuGiFBpKbVyUfAoGBAPwr
+zpPviCjgeudqSHx8fNswGfQsTvQjV4RchpjOOIQ3uuXs/MTPVs6zklnfavlrFd18
+uL8QAB6ef2ZGkBhsGxeYjdPdeqIjwS5f7TtSl1QFMOnPmaT+/QXU2U8umbQ4JQW7
+i8O53loxUiWLa1IhHVSI4ZWCJIngvtRwEbYauJjtAoGBAMcnZZ+dJVtsoGlKS+Sn
+A7faf5s8Y+sxYFbyeWLpirL8gbTRB8lGM2JeohRcooR/kV+YhTBSvbrGJyC/bcXG
+gt4G9Hiol5U+xFuKDZ2nns1sWc/0fH4UcSdCpciGWEwkb1iQbJrnA3Js5Xtu71TE
+qgbZK4qWP5tpTntnfRDCrmi7AoGAGRJx85t5Ojc3gRK8KkRmVZSuv+w33WY2KV7Z
+sw+t5tdzqbCqYRcMVnjcMDtac3oGLoNcCwMYP/MaT5zsbsEw4GO2lj4LF1vetTGs
+cJ2BlkT93AFcEV+Y4J+NC6ZiedyrMaq39rngNa95r2nxPbU1KVaCt069O0gxMQYD
+fMujVvECgYEAwAtEPoSlr9irA1QMiQokP77V1xxYDOh0xUPtpxgx9oBzLaKIkU8B
+Tg0JP0JYPB7fEfDHVQs+QeCrpehZChpX54zg3dXxje0qfBDtE6ir/GoWUxhS23Af
+kRn2xO27PxsoN7VFlPNnUByxY5AC3sI6mngdfFYhtUYDFss69s7aclA=
+-----END RSA PRIVATE KEY-----
+private_key_type    rsa
+serial_number       39:03:96:37:e7:64:3d:ae:2a:9f:e9:da:a5:9c:bb:47:f0:46:4e:f8
+```
