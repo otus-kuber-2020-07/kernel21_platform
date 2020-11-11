@@ -470,3 +470,69 @@ kRn2xO27PxsoN7VFlPNnUByxY5AC3sI6mngdfFYhtUYDFss69s7aclA=
 private_key_type    rsa
 serial_number       39:03:96:37:e7:64:3d:ae:2a:9f:e9:da:a5:9c:bb:47:f0:46:4e:f8
 ```
+
+## Домашняя работа 12 (kubernetes-storage)
+
+- Подготовим кластер k1s из 2 нод:
+```console
+git clone https://github.com/maniaque/k1s.git
+cd k1s/vagrant/twin/
+vagrant up
+vagrant ssh -c 'cat /home/vagrant/.kube/config' > ~/.kube/config
+```
+- Установим CSI Host Path Driver:
+```console
+git clone https://github.com/kubernetes-csi/csi-driver-host-path.git
+./csi-crd_deploy.sh
+./csi-driver-host-path/deploy/kubernetes-1.18/deploy.sh
+```
+- Применим манифесты
+```console
+$ kubectl apply -f ./hw/csi-storageclass.yaml -f ./hw/csi-pvc.yaml -f ./hw/csi-app.yaml
+storageclass.storage.k8s.io/csi-hostpath-sc created
+persistentvolumeclaim/storage-pvc created
+pod/storage-pod created
+```
+- Запишем данные в volume
+```console
+$ kubectl exec -it storage-pod /bin/sh
+# touch /data/hello-world    
+# ls -la /data
+total 8
+drwxr-xr-x 2 root root 4096 Nov 11 15:19 .
+drwxr-xr-x 1 root root 4096 Nov 11 15:17 ..
+-rw-r--r-- 1 root root    0 Nov 11 15:19 hello-world
+```
+- Создадим снапшот
+```console
+kubectl apply -f hw/csi-snapshot.yaml
+volumesnapshot.snapshot.storage.k8s.io/csi-snapshot created
+```
+- Удалим pod, pv, pvс
+```console
+kubectl delete -f ./hw/csi-app.yaml
+pod "storage-pod" deleted
+kubectl delete -f ./hw/csi-pvc.yaml
+persistentvolumeclaim "storage-pvc" deleted
+
+kubectl get pvc
+No resources found in default namespace.
+kubectl get pv
+No resources found in default namespace.
+```
+
+- Восстановимся из snapshot'а
+```
+kubectl apply -f ./hw/csi-restore.yaml
+```
+- Восстанавливаем pod и проверяем данные
+```
+kubectl apply -f ./hw/csi-app.yaml
+```
+```console
+$ kubectl exec storage-pod -- ls -la /data
+total 8
+drwxr-xr-x 2 root root 4096 Nov 11 15:19 .
+drwxr-xr-x 1 root root 4096 Nov 11 15:17 ..
+-rw-r--r-- 1 root root    0 Nov 11 15:19 hello-world
+```
