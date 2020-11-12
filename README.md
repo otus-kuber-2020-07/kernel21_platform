@@ -536,3 +536,217 @@ drwxr-xr-x 2 root root 4096 Nov 11 15:19 .
 drwxr-xr-x 1 root root 4096 Nov 11 15:17 ..
 -rw-r--r-- 1 root root    0 Nov 11 15:19 hello-world
 ```
+
+## Домашняя работа 13 (kubernetes-debug)
+
+
+### 1. kubectl debug
+
+- Установим kubectl debug согласно инструкции из репозитария проекта, поправим agent_daemonset.yml, чтобы избавится от ошибки:
+
+```console
+$ kubectl apply -f strace/agent_daemonset.yml
+error: unable to recognize "strace/agent_daemonset.yml": no matches for kind "DaemonSet" in version "extensions/v1beta1"
+```
+- Запустим pod
+
+```console
+kubectl apply -f strace/nginx.yaml
+pod/nginx created
+```
+
+- Запустим дебаг и видим отсутсвие прав:
+
+```console
+$ kubectl-debug nginx --agentless=false --port-forward=true
+bash-5.0# ps
+PID   USER     TIME  COMMAND
+    1 root      0:00 nginx: master process nginx -g daemon off;
+   29 101       0:00 nginx: worker process
+   39 root      0:00 bash
+   45 root      0:00 ps
+bash-5.0# strace -p29 -c
+strace: attach: ptrace(PTRACE_SEIZE, 29): Operation not permitted
+```
+
+- Заходим на ноду и смотрим docker capabilities:
+
+```console
+$ docker inspect 0b9f3610a18e | grep CapAdd
+"CapAdd": null
+```
+- Испраляем в файле версию образа debug-agent с 0.0.1 на latest, удаляем старый daemonset, устанавливаем новый и проверяем права:
+
+```console
+$ docker inspect 008a6212c55a | less
+"CapAdd": [
+    "SYS_PTRACE",    
+    "SYS_ADMIN"
+],
+```
+- Запускаем дебаг и видим нормальную работу strace
+
+$ kubectl-debug nginx --agentless=false --port-forward=true
+bash-5.0# ps
+PID   USER     TIME  COMMAND
+    1 root      0:00 nginx: master process nginx -g daemon off;
+   29 101       0:00 nginx: worker process
+   57 root      0:00 bash
+   63 root      0:00 ps
+bash-5.0# strace -p29 -c
+strace: Process 29 attached
+
+
+### 2. iptables-tailer
+
+- Установим netperf-operator:
+
+```console
+$ kubectl apply -f ./deploy/crd.yaml
+$ kubectl apply -f ./deploy/rbac.yaml
+$ kubectl apply -f ./deploy/operator.yaml
+```
+
+- Запустим пример:
+```console
+$ kubectl apply -f ./deploy/cr.yaml
+$ kubectl describe netperf.app.example.com/example
+
+- Установим логирования iptables:
+```console
+$ kubectl apply -f kit/netperf-calico-policy.yaml
+$ kubectl delete -f ../deploy/cr.yaml
+$ kubectl apply -f ../deploy/cr.yaml
+$ kubectl describe netperf.app.example.com/example
+...
+Status:
+  Client Pod:          netperf-client-4bdd99b825f8
+  Server Pod:          netperf-server-4bdd99b825f8
+  Speed Bits Per Sec:  0
+  Status:              Started test
+...
+```
+- Подключаемся к ноде и смотрим логи:
+
+```console
+$ kubectl logs pod/netperf-operator-55b49546b5-fxjp6
+....
+time="2020-11-12T12:07:10Z" level=debug msg="New Netperf event, name: example, deleted: false, status: Done"
+time="2020-11-12T12:07:10Z" level=debug msg="Nothing needed to do for update event on Netperf example in state Done"
+time="2020-11-12T12:07:15Z" level=debug msg="New Netperf event, name: example, deleted: false, status: Done"
+time="2020-11-12T12:07:15Z" level=debug msg="Nothing needed to do for update event on Netperf example in state Done"
+time="2020-11-12T12:07:20Z" level=debug msg="New Netperf event, name: example, deleted: false, status: Done"
+time="2020-11-12T12:07:20Z" level=debug msg="Nothing needed to do for update event on Netperf example in state Done"
+time="2020-11-12T12:07:25Z" level=debug msg="New Netperf event, name: example, deleted: false, status: Done"
+time="2020-11-12T12:07:25Z" level=debug msg="Nothing needed to do for update event on Netperf example in state Done"
+time="2020-11-12T12:07:30Z" level=debug msg="New Netperf event, name: example, deleted: false, status: Done"
+time="2020-11-12T12:07:30Z" level=debug msg="Nothing needed to do for update event on Netperf example in state Done"
+```
+```console
+root@k1s:~# sudo iptables --list -nv | grep DROP - счетчики дропов 
+root@k1s:~# sudo iptables --list -nv | grep LOG
+root@k1s:~# journalctl -k | grep calico
+```
+
+### iptailer
+
+- Прменяем манифест:
+```console
+$ kubectl apply -f kit/iptables-tailer.yaml 
+$ kubectl describe daemonset kube-iptables-tailer -n kube-system
+Events:
+  Type     Reason        Age                From                  Message
+  ----     ------        ----               ----                  -------
+  Warning  FailedCreate  10m  daemonset-controller  Error creating: pods "kube-iptables-tailer-" is forbidden: error looking up service account kube-system/kube-iptables-tailer: serviceaccount "kube-iptables-tailer" not found
+```
+- Прменяем ServiceAccount
+```console
+$ kubectl apply -f kit/kit-serviceaccount.yaml
+$ kubectl apply -f kit/kit-clusterrole.yaml
+$ kubectl apply -f kit/kit-clusterrolebinding.yaml 
+$ kubectl describe daemonset kube-iptables-tailer -n kube-system
+Events:
+  Type     Reason            Age                   From                  Message
+  ----     ------            ----                  ----                  -------
+  ...
+  Normal   SuccessfulCreate  25s                   daemonset-controller  Created pod: kube-iptables-tailer-jd65k
+  Normal   SuccessfulCreate  25s                   daemonset-controller  Created pod: kube-iptables-tailer-r9vs5
+```
+- Пересоздаём netperf
+
+```console
+$ kubectl delete -f ../deploy/cr.yaml
+$ kubectl apply -f ../deploy/cr.yaml
+$ kubectl describe netperf.app.example.com/example
+Status:
+  Client Pod:          netperf-client-4bdd99b825f8
+  Server Pod:          netperf-server-4bdd99b825f8
+  Speed Bits Per Sec:  4119.22
+  Status:              Done
+```
+- Проверяем:
+
+```console
+kubectl describe pod/netperf-client-4bdd99b825f8
+Name:         netperf-client-4bdd99b825f8
+Namespace:    default
+Priority:     0
+Node:         k1s/192.168.33.110
+Start Time:   Thu, 12 Nov 2020 17:00:03 +0300
+Labels:       app=netperf-operator
+              netperf-type=client
+Annotations:  cni.projectcalico.org/podIP: 10.244.45.220/32
+              cni.projectcalico.org/podIPs: 10.244.45.220/32
+Status:       Running
+IP:           10.244.45.220
+IPs:
+  IP:           10.244.45.220
+Controlled By:  Netperf/example
+Containers:
+  netperf-client-4bdd99b825f8:
+    Container ID:  docker://5a00317f4d95fe9a39875e01d0d398d4d80d0a7c48291dec967cbf0035cfa4aa
+    Image:         tailoredcloud/netperf:v2.7
+    Image ID:      docker-pullable://tailoredcloud/netperf@sha256:0361f1254cfea87ff17fc1bd8eda95f939f99429856f766db3340c8cdfed1cf1
+    Port:          <none>
+    Host Port:     <none>
+    Command:
+      netperf
+      -H
+      10.244.45.219
+    State:          Running
+      Started:      Thu, 12 Nov 2020 17:55:12 +0300
+    Last State:     Terminated
+      Reason:       Error
+      Exit Code:    255
+      Started:      Thu, 12 Nov 2020 17:47:53 +0300
+      Finished:     Thu, 12 Nov 2020 17:50:03 +0300
+    Ready:          True
+    Restart Count:  11
+    Environment:    <none>
+    Mounts:
+      /var/run/secrets/kubernetes.io/serviceaccount from default-token-bl5kq (ro)
+Conditions:
+  Type              Status
+  Initialized       True 
+  Ready             True 
+  ContainersReady   True 
+  PodScheduled      True 
+Volumes:
+  default-token-bl5kq:
+    Type:        Secret (a volume populated by a Secret)
+    SecretName:  default-token-bl5kq
+    Optional:    false
+QoS Class:       BestEffort
+Node-Selectors:  <none>
+Tolerations:     node.kubernetes.io/not-ready:NoExecute op=Exists for 300s
+                 node.kubernetes.io/unreachable:NoExecute op=Exists for 300s
+Events:
+  Type     Reason      Age                    From                  Message
+  ----     ------      ----                   ----                  -------
+  Normal   Scheduled   57m                    default-scheduler     Successfully assigned default/netperf-client-4bdd99b825f8 to k1s
+  Normal   Created     47m (x5 over 57m)      kubelet               Created container netperf-client-4bdd99b825f8
+  Normal   Started     47m (x5 over 57m)      kubelet               Started container netperf-client-4bdd99b825f8
+  Warning  BackOff     6m58s (x123 over 52m)  kubelet               Back-off restarting failed container
+  Normal   Pulled      2m5s (x12 over 57m)    kubelet               Container image "tailoredcloud/netperf:v2.7" already present on machine
+  Warning  PacketDrop  2m5s (x11 over 55m)    kube-iptables-tailer  Packet dropped when sending traffic to netperf-server-4bdd99b825f8 (10.244.45.219)
+```
